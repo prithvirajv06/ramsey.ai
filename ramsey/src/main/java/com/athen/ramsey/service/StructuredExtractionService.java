@@ -20,14 +20,14 @@ public class StructuredExtractionService {
     private static final Logger log = LoggerFactory.getLogger(StructuredExtractionService.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a precise data extraction engine. You will be given raw text extracted \
-            from a document and a target JSON structure. Return ONLY a single valid JSON \
-            object that matches the target structure exactly - same keys, same nesting, same \
-            array/object shape. Populate values using information found in the text. If a \
-            value cannot be found, use null. Do not add extra keys. Do not include any \
-            explanation, commentary, or markdown code fences - output raw JSON only.
-            Extract details based on the description provided in the JSON template.
-            """;
+            You are a precise data extraction engine. You will be given text extracted from \
+            a document, formatted as Markdown (headings and tables reflect the document's \
+            original layout - use that structure to understand which values relate to which \
+            labels/rows/columns), and a target JSON structure. Return ONLY a single valid \
+            JSON object that matches the target structure exactly - same keys, same nesting, \
+            same array/object shape. Populate values using information found in the text. If \
+            a value cannot be found, use null. Do not add extra keys. Do not include any \
+            explanation, commentary, or markdown code fences - output raw JSON only.""";
 
     private final TextExtractionService textExtractionService;
     private final LlmClientResolver llmClientResolver;
@@ -46,20 +46,26 @@ public class StructuredExtractionService {
 
     public StructuredExtractionResponse extractStructured(MultipartFile file, String expectedStructure,
                                                             String providerOverride) {
+        return extractStructured(file, expectedStructure, providerOverride, null, null);
+    }
+
+    public StructuredExtractionResponse extractStructured(MultipartFile file, String expectedStructure,
+                                                            String providerOverride, Integer startPage,
+                                                            Integer endPage) {
         if (expectedStructure == null || expectedStructure.isBlank()) {
             throw new IllegalArgumentException("expectedStructure must be provided and contain a JSON shape.");
         }
 
         long start = System.currentTimeMillis();
 
-        ExtractionResponse extraction = textExtractionService.extract(file);
+        ExtractionResponse extraction = textExtractionService.extract(file, startPage, endPage);
         String effectiveProvider = (providerOverride != null && !providerOverride.isBlank())
                 ? providerOverride.toLowerCase()
                 : llmProperties.provider().toLowerCase();
         LlmClient client = llmClientResolver.resolve(providerOverride);
 
         String userPrompt = "TARGET JSON STRUCTURE:\n" + expectedStructure
-                + "\n\nEXTRACTED DOCUMENT TEXT:\n" + extraction.getText();
+                + "\n\nEXTRACTED DOCUMENT TEXT (Markdown):\n" + extraction.getText();
 
         String rawLlmOutput = client.complete(SYSTEM_PROMPT, userPrompt);
         JsonNode structuredData = parseJson(rawLlmOutput);

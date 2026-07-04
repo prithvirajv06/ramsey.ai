@@ -36,6 +36,10 @@ public class TextExtractionService {
     }
 
     public ExtractionResponse extract(MultipartFile file) {
+        return extract(file, null, null);
+    }
+
+    public ExtractionResponse extract(MultipartFile file, Integer startPage, Integer endPage) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
         }
@@ -59,16 +63,29 @@ public class TextExtractionService {
 
         String text;
         String method;
+        String format = "PLAIN";
+        Integer totalPages = null;
+        Integer fromPage = null;
+        Integer toPage = null;
 
         switch (type) {
             case PDF -> {
-                PdfExtractor.Result result = pdfExtractor.extract(bytes);
+                PdfExtractor.Result result = pdfExtractor.extract(bytes, startPage, endPage);
                 text = result.text();
                 method = result.method();
+                format = "MARKDOWN";
+                totalPages = result.totalPages();
+                fromPage = result.fromPage();
+                toPage = result.toPage();
             }
             case DOCX -> {
-                text = wordExtractor.extractDocx(bytes);
+                if (startPage != null || endPage != null) {
+                    log.debug("startPage/endPage were provided for a .docx file and will be ignored " +
+                            "(DOCX has no fixed page boundaries in the file format itself).");
+                }
+                text = wordExtractor.extractDocxAsMarkdown(bytes);
                 method = "NATIVE";
+                format = "MARKDOWN";
             }
             case DOC -> {
                 text = wordExtractor.extractDoc(bytes);
@@ -87,10 +104,21 @@ public class TextExtractionService {
         }
 
         long elapsed = System.currentTimeMillis() - start;
-        log.info("Extracted {} chars from '{}' (type={}, method={}) in {} ms",
-                text.length(), originalName, type, method, elapsed);
+        log.info("Extracted {} chars from '{}' (type={}, method={}, format={}) in {} ms",
+                text.length(), originalName, type, method, format, elapsed);
 
-        return new ExtractionResponse(originalName, type.name(), method, text.length(), elapsed, text);
+        ExtractionResponse response = new ExtractionResponse();
+        response.setFileName(originalName);
+        response.setDetectedType(type.name());
+        response.setExtractionMethod(method);
+        response.setFormat(format);
+        response.setTotalPages(totalPages);
+        response.setFromPage(fromPage);
+        response.setToPage(toPage);
+        response.setCharacterCount(text.length());
+        response.setProcessingTimeMs(elapsed);
+        response.setText(text);
+        return response;
     }
 
     private File writeToTempFile(byte[] bytes, String originalName) {

@@ -10,10 +10,8 @@ import java.time.Instant;
 @Document(collection = "extraction_records")
 public class ExtractionRecord {
 
-    @Id
     private String id;
 
-    @Indexed
     private String fileName;
 
     private String detectedType;
@@ -21,8 +19,6 @@ public class ExtractionRecord {
     private int characterCount;
     private long processingTimeMs;
     private String text;
-
-    @CreatedDate
     private Instant createdAt;
 
     public ExtractionRecord() {
